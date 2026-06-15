@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useReviewEngine } from '../sdk/react';
+import { useTranslation } from 'react-i18next';
 
 const TEMPLATES = [
   {
     key: 'general',
-    label: '通用审查',
-    desc: '适用于各类问题，AI 自主判定审查方向和重点',
     systemPrompt: `【通用审查模式】
 你将作为Hank个人工作室 AI审查系统，对用户提出的问题进行多维度全面审查。
 审查维度包括但不限于：
@@ -18,8 +17,6 @@ const TEMPLATES = [
   },
   {
     key: 'code',
-    label: '代码审查',
-    desc: '审查代码方案、架构设计、技术选型与安全性',
     systemPrompt: `【代码审查模式】
 你将作为Hank个人工作室 AI审查系统，对用户提交的代码方案或技术设计进行专业审查。
 审查维度：
@@ -33,8 +30,6 @@ const TEMPLATES = [
   },
   {
     key: 'contract',
-    label: '合同审查',
-    desc: '审查合同条款、法律风险、权责分配与合规性',
     systemPrompt: `【合同审查模式】
 你将作为Hank个人工作室 AI审查系统，对用户提供的合同或协议条款进行审查分析。
 审查维度：
@@ -49,8 +44,6 @@ const TEMPLATES = [
   },
   {
     key: 'thesis',
-    label: '论文审查',
-    desc: '审查学术论文的逻辑结构、论证强度与格式规范',
     systemPrompt: `【论文审查模式】
 你将作为Hank个人工作室 AI审查系统，对用户提交的学术论文进行审查分析。
 审查维度：
@@ -66,8 +59,6 @@ const TEMPLATES = [
   },
   {
     key: 'business',
-    label: '商业计划',
-    desc: '审查商业计划的市场分析、财务预测与执行路径',
     systemPrompt: `【商业计划审查模式】
 你将作为Hank个人工作室 AI审查系统，对用户提交的商业计划进行审查分析。
 审查维度：
@@ -84,6 +75,7 @@ const TEMPLATES = [
 ];
 
 export default function TaskNew() {
+  const { t } = useTranslation();
   const nav = useNavigate();
   const { task, startReview, isRunning } = useReviewEngine();
   const [title, setTitle] = useState('');
@@ -100,7 +92,7 @@ export default function TaskNew() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !input.trim() || isRunning) return;
-    const tpl = TEMPLATES.find(t => t.key === template);
+    const tpl = TEMPLATES.find(tp => tp.key === template);
     const fullInput = tpl
       ? `${tpl.systemPrompt}\n\n用户问题：\n${input}`
       : input;
@@ -125,12 +117,12 @@ export default function TaskNew() {
                 textTransform: 'uppercase',
                 marginBottom: 10,
               }}>
-                审查标题
+                {t('newReview.title')}
               </label>
               <input
                 type="text" value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="输入标题..."
+                placeholder={t('newReview.titlePlaceholder')}
                 disabled={isRunning}
                 className="input"
                 style={{ fontSize: 24, fontWeight: 600, padding: '12px 14px', letterSpacing: '-0.02em' }}
@@ -148,16 +140,16 @@ export default function TaskNew() {
                 textTransform: 'uppercase',
                 marginBottom: 10,
               }}>
-                审查模板
+                {t('newReview.template')}
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {TEMPLATES.map((t) => {
-                  const selected = template === t.key;
+                {templateKeys.map((tk) => {
+                  const selected = template === tk;
                   return (
                     <button
-                      key={t.key}
+                      key={tk}
                       type="button"
-                      onClick={() => setTemplate(t.key)}
+                      onClick={() => setTemplate(tk)}
                       disabled={isRunning}
                       className={selected ? 'gradient-border' : ''}
                       style={{
@@ -187,7 +179,7 @@ export default function TaskNew() {
                         letterSpacing: '-0.01em',
                         marginBottom: 4,
                       }}>
-                        {t.label}
+                        {t(`newReview.templates.${tk}`)}
                       </span>
                       <span style={{
                         position: 'relative',
@@ -196,7 +188,7 @@ export default function TaskNew() {
                         lineHeight: 1.4,
                         display: 'block',
                       }}>
-                        {t.desc}
+                        {t(`newReview.templates.${tk}Desc`)}
                       </span>
                     </button>
                   );
@@ -215,11 +207,11 @@ export default function TaskNew() {
                 textTransform: 'uppercase',
                 marginBottom: 10,
               }}>
-                问题描述
+                {t('newReview.description')}
               </label>
               <textarea
                 value={input} onChange={e => setInput(e.target.value)}
-                placeholder="请详细描述你的问题和背景信息..."
+                placeholder={t('newReview.descriptionPlaceholder')}
                 rows={6} disabled={isRunning}
                 className="input textarea"
                 style={{ fontSize: 13, padding: '12px 14px', lineHeight: 1.65 }}
@@ -250,7 +242,7 @@ export default function TaskNew() {
                   if (!isRunning) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(79,108,247,0.3)'; }
                 }}
               >
-                {isRunning ? '审查运行中...' : '开始审查'}
+                {isRunning ? t('newReview.running') : t('newReview.submit')}
               </button>
             </div>
           </div>
@@ -259,3 +251,5 @@ export default function TaskNew() {
     </div>
   );
 }
+
+const templateKeys = ['general', 'code', 'contract', 'thesis', 'business'];

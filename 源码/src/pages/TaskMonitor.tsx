@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useReviewEngine } from '../sdk/react';
+import { useTranslation } from 'react-i18next';
 
 export default function TaskMonitor() {
+  const { t } = useTranslation();
   const { task, outputs, finalReport, progress, isRunning, isPaused, pause, resume, stop, supplement } = useReviewEngine();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [showReport, setShowReport] = useState(false);
@@ -16,33 +18,33 @@ export default function TaskMonitor() {
 
   const exportMD = () => {
     if (!finalReport && outputs.length === 0) {
-      showToast('暂无内容可导出');
+      showToast(t('monitor.noContentExport'));
       return;
     }
     const lines: string[] = [];
-    lines.push(`# ${task?.title || '审查报告'}`);
+    lines.push(`# ${task?.title || t('monitor.report')}`);
     lines.push('');
-    lines.push(`> 生成时间：${new Date().toLocaleString('zh-CN')}`);
-    if (task?.totalRounds) lines.push(`> 审查轮数：${task.totalRounds}`);
+    lines.push(`> ${t('monitor.generatedAt')}：${new Date().toLocaleString('zh-CN')}`);
+    if (task?.totalRounds) lines.push(`> ${t('monitor.totalRounds')}：${task.totalRounds}`);
     lines.push('');
 
     const grouped = new Map<number, typeof outputs>();
     for (const o of outputs) grouped.set(o.roundNumber, [...(grouped.get(o.roundNumber) || []), o]);
 
     for (const [round, items] of grouped) {
-      const label = round === 0 ? '准备层' : round === 999 ? '总结层' : `第 ${round} 轮`;
+      const label = round === 0 ? t('monitor.preparing') : round === 999 ? t('monitor.summarizing') : t('monitor.round', { round });
       lines.push(`## ${label}`);
       lines.push('');
       for (const o of items) {
         lines.push(`### ${o.roleName}`);
         lines.push('');
-        lines.push(o.outputContent || '(无输出)');
+        lines.push(o.outputContent || t('monitor.noOutput'));
         lines.push('');
       }
     }
 
     if (finalReport) {
-      lines.push('## 最终报告');
+      lines.push(`## ${t('monitor.finalReport')}`);
       lines.push('');
       lines.push(finalReport.reportContent);
     }
@@ -52,12 +54,12 @@ export default function TaskMonitor() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${task?.title || '审查报告'}.md`;
+    a.download = `${task?.title || t('monitor.report')}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Markdown 报告已导出');
+    showToast(t('monitor.reportExported'));
   };
 
   if (!task) {
@@ -65,12 +67,12 @@ export default function TaskMonitor() {
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }} className="anim-up">
           <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500, marginBottom: 6 }}>
-            暂无审查任务
+            {t('monitor.noTask')}
           </p>
           <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 24 }}>
-            在「新建审查」中创建第一个任务
+            {t('monitor.noTaskHint')}
           </p>
-          <Link to="/new" className="btn btn-secondary" style={{ fontSize: 13 }}>新建审查</Link>
+          <Link to="/new" className="btn btn-secondary" style={{ fontSize: 13 }}>{t('monitor.newBtn')}</Link>
         </div>
       </div>
     );
@@ -84,7 +86,11 @@ export default function TaskMonitor() {
   });
 
   const phaseMap: Record<string, string> = {
-    preparation: '准备', debate: '辩论', summary: '总结', completed: '完成', error: '错误',
+    preparation: t('monitor.preparing'),
+    debate: t('monitor.debating'),
+    summary: t('monitor.summarizing'),
+    completed: t('monitor.completed'),
+    error: t('monitor.error'),
   };
 
   return (
@@ -115,17 +121,17 @@ export default function TaskMonitor() {
                 <><span style={{ color: 'var(--text-tertiary)' }}>·</span><span style={{ color: 'var(--text-tertiary)' }}>{progress.completedSteps}/{progress.totalSteps}</span></>
               )}
               {progress.currentRound != null && progress.totalRounds != null && (
-                <><span style={{ color: 'var(--text-tertiary)' }}>·</span><span style={{ color: 'var(--text-tertiary)' }}>{progress.currentRound}/{progress.totalRounds} 轮</span></>
+                <><span style={{ color: 'var(--text-tertiary)' }}>·</span><span style={{ color: 'var(--text-tertiary)' }}>{progress.currentRound}/{progress.totalRounds} {t('monitor.round', { round: '' }).trim()}</span></>
               )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button onClick={exportMD} className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}>
-              导出 MD
+              {t('monitor.exportMD')}
             </button>
-            {isRunning && !isPaused && <button onClick={pause} className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}>暂停</button>}
-            {isPaused && <button onClick={resume} className="btn btn-secondary" style={{ fontSize: 11, padding: '5px 12px' }}>继续</button>}
-            {(isRunning || isPaused) && <button onClick={stop} className="btn btn-danger" style={{ fontSize: 11, padding: '5px 12px' }}>停止</button>}
+            {isRunning && !isPaused && <button onClick={pause} className="btn btn-ghost" style={{ fontSize: 11, padding: '5px 12px' }}>{t('monitor.pause')}</button>}
+            {isPaused && <button onClick={resume} className="btn btn-secondary" style={{ fontSize: 11, padding: '5px 12px' }}>{t('monitor.resume')}</button>}
+            {(isRunning || isPaused) && <button onClick={stop} className="btn btn-danger" style={{ fontSize: 11, padding: '5px 12px' }}>{t('monitor.stop')}</button>}
           </div>
         </div>
 
@@ -141,7 +147,7 @@ export default function TaskMonitor() {
           <div className="anim-up" style={{ marginBottom: 32, animationDelay: '0.08s' } as React.CSSProperties}>
             <input
               value={supp} onChange={e => setSupp(e.target.value)}
-              placeholder="补充信息（Enter 提交）"
+              placeholder={t('monitor.supplement')}
               onKeyDown={e => { if (e.key === 'Enter' && supp.trim()) { supplement(supp.trim()); setSupp(''); }}}
               className="input" style={{ fontSize: 13, padding: '8px 12px' }}
             />
@@ -156,7 +162,7 @@ export default function TaskMonitor() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
                 <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.02)' }} />
                 <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.15em', textTransform: 'uppercase', flexShrink: 0 }}>
-                  {round === 0 ? '准备' : round === 999 ? '最终报告' : `第 ${round} 轮`}
+                  {round === 0 ? t('monitor.preparing') : round === 999 ? t('monitor.finalReport') : t('monitor.round', { round })}
                 </span>
                 <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.02)' }} />
               </div>
@@ -233,7 +239,7 @@ export default function TaskMonitor() {
               <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span className="status-dot success" />
-                  <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>审查报告</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em' }}>{t('monitor.report')}</span>
                 </div>
                 <span style={{
                   fontSize: 10.5, color: 'var(--text-tertiary)', fontWeight: 500,

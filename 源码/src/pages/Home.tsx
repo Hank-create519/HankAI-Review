@@ -1,22 +1,15 @@
 import { useNavigate } from 'react-router-dom';
-
-const cards = [
-  {
-    title: '多角色辩论',
-    desc: '八个异构 AI 角色，从不同视角交叉辩论，确保审查无死角',
-  },
-  {
-    title: '深度分析',
-    desc: '多轮迭代论证，层层递进，输出结构化审查报告',
-  },
-  {
-    title: '即刻开始',
-    desc: '为每个 AI 角色配置 API Key 后即可启用完整审查功能',
-  },
-];
+import { useTranslation } from 'react-i18next';
 
 export default function Home() {
   const nav = useNavigate();
+  const { t } = useTranslation();
+
+  const cards = [
+    { title: t('home.card1Title'), desc: t('home.card1Desc') },
+    { title: t('home.card2Title'), desc: t('home.card2Desc') },
+    { title: t('home.card3Title'), desc: t('home.card3Desc') },
+  ];
 
   return (
     <div style={{
@@ -45,7 +38,7 @@ export default function Home() {
           marginBottom: 28,
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4f6cf7', boxShadow: '0 0 8px rgba(79,108,247,0.5)' }} />
-          AI 审查引擎
+          {t('home.badge')}
         </div>
 
         <h1 style={{
@@ -55,7 +48,7 @@ export default function Home() {
           letterSpacing: '-0.03em',
           marginBottom: 20,
         }}>
-          <span className="text-gradient">Hank个人工作室</span>
+          <span className="text-gradient">{t('home.studio')}</span>
         </h1>
 
         <p style={{
@@ -65,7 +58,7 @@ export default function Home() {
           letterSpacing: '0.06em',
           marginBottom: 8,
         }}>
-          AI 审查系统
+          {t('home.system')}
         </p>
 
         <p style={{
@@ -75,7 +68,7 @@ export default function Home() {
           maxWidth: 480,
           marginBottom: 36,
         }}>
-          八个异构 AI 角色，多轮交叉辩论，一份经过验证的报告
+          {t('home.subtitle')}
         </p>
 
         <div style={{ display: 'flex', gap: 12 }}>
@@ -102,7 +95,7 @@ export default function Home() {
               e.currentTarget.style.boxShadow = '0 4px 20px rgba(79,108,247,0.3)';
             }}
           >
-            开始审查
+            {t('home.startBtn')}
           </button>
           <button
             onClick={() => nav('/config')}
@@ -127,7 +120,7 @@ export default function Home() {
               e.currentTarget.style.color = 'var(--text-secondary)';
             }}
           >
-            配置 AI
+            {t('home.configBtn')}
           </button>
         </div>
       </div>
@@ -176,7 +169,7 @@ export default function Home() {
             textAlign: 'center',
             marginTop: 12,
           }}>
-            请先在「AI 配置」中填写 API Key
+            {t('home.footerHint')}
           </p>
         </div>
       </div>

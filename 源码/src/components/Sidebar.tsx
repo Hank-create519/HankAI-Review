@@ -1,21 +1,29 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-
-const NAV = [
-  { path: '/', label: '首页', icon: '◆' },
-  { path: '/new', label: '新建审查', icon: '◇' },
-  { path: '/monitor', label: '监控', icon: '◎' },
-  { path: '/config', label: '配置', icon: '◈' },
-  { path: '/history', label: '历史', icon: '◉' },
-];
+import { useTranslation } from 'react-i18next';
 
 export function Sidebar() {
+  const { t, i18n } = useTranslation();
   const loc = useLocation();
   const nav = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
+  const NAV = [
+    { path: '/', label: t('nav.home'), icon: '◆' },
+    { path: '/new', label: t('nav.newReview'), icon: '◇' },
+    { path: '/monitor', label: t('nav.monitor'), icon: '◎' },
+    { path: '/config', label: t('nav.config'), icon: '◈' },
+    { path: '/history', label: t('nav.history'), icon: '◉' },
+    { path: '/about', label: t('nav.about'), icon: '○' },
+  ];
+
   const isActive = (path: string) =>
     path === '/' ? loc.pathname === '/' : loc.pathname.startsWith(path);
+
+  const toggleLang = () => {
+    const next = i18n.language === 'zh' ? 'en' : 'zh';
+    i18n.changeLanguage(next);
+  };
 
   return (
     <aside style={{
@@ -55,7 +63,7 @@ export function Sidebar() {
               WebkitTextFillColor: 'transparent',
             }}
           >
-            Hank个人工作室
+            {t('home.studio')}
           </button>
         </div>
       )}
@@ -119,12 +127,42 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Language switcher & footer */}
       {!collapsed && (
         <div style={{ padding: '16px 16px 24px' }}>
           <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)', marginBottom: 12 }} />
+          <button
+            onClick={toggleLang}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 6,
+              border: 'none',
+              background: 'rgba(255,255,255,0.03)',
+              color: 'rgba(180,190,230,0.35)',
+              fontSize: 10,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 150ms',
+              marginBottom: 12,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.color = 'rgba(200,210,245,0.6)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+              e.currentTarget.style.color = 'rgba(180,190,230,0.35)';
+            }}
+          >
+            <span style={{ fontSize: 10 }}>{i18n.language === 'zh' ? 'EN' : '中'}</span>
+            <span>{t('lang.switch')}</span>
+          </button>
           <p style={{ fontSize: 10, color: 'rgba(180,190,230,0.25)', lineHeight: 1.4 }}>
-            请配置 API Key 后使用
+            {t('home.footerHint')}
           </p>
         </div>
       )}
@@ -152,7 +190,7 @@ export function Sidebar() {
         }}
         onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
         onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
-        title={collapsed ? '展开' : '折叠'}
+        title={collapsed ? t('lang.switch') : ''}
       >
         <span style={{ fontSize: 8, color: 'rgba(200,210,245,0.6)', transform: collapsed ? 'none' : 'rotate(180deg)', transition: 'transform 300ms' }}>
           ◀

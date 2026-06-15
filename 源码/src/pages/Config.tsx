@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useReviewEngine } from '../sdk/react';
 import { PROVIDER_DEFAULTS } from '../types';
 import { updateConfig } from '../hooks/useDB';
+import { useTranslation } from 'react-i18next';
 import type { AIConfig } from '../types';
 
 const PROVIDERS: { key: string; label: string }[] = [
@@ -20,10 +21,10 @@ const PROVIDERS: { key: string; label: string }[] = [
 let _debateCounter = 3;
 
 export default function Config() {
+  const { t } = useTranslation();
   const { configs, updateConfigs } = useReviewEngine();
   const [openRole, setOpenRole] = useState<string | null>(null);
 
-  // 防抖持久化：编辑后 500ms 写入 DB
   const persistTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const persistConfig = (rk: string, p: Partial<AIConfig>) => {
     const existing = persistTimers.current.get(rk);
@@ -46,7 +47,7 @@ export default function Config() {
     const newAI: AIConfig = {
       id: maxId + 1,
       roleKey: `ai_debate_${_debateCounter}`,
-      roleName: `自定义审查 AI ${_debateCounter}`,
+      roleName: t('config.customAi', { n: _debateCounter }),
       phase: 'debate',
       provider: 'custom',
       apiKey: '',
@@ -55,7 +56,7 @@ export default function Config() {
       temperature: 0.3,
       maxTokens: 4096,
       isEnabled: true,
-      systemPrompt: '你是辩论审查 AI，隶属于Hank个人工作室审查系统。请基于审查任务说明书进行分析和论证。',
+      systemPrompt: t('config.customSystemPrompt'),
       enableWebSearch: false,
       skills: [],
     };
@@ -68,6 +69,8 @@ export default function Config() {
     if (openRole === rk) setOpenRole(null);
   };
 
+  const debateCount = configs.filter(c => c.phase === 'debate' && c.isEnabled).length;
+
   return (
     <div style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{ maxWidth: 580, margin: '0 auto', padding: '48px 40px' }}>
@@ -75,19 +78,19 @@ export default function Config() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40 }} className="anim-up">
           <div>
             <h2 style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', marginBottom: 4 }}>
-              AI 配置
+              {t('config.title')}
             </h2>
             <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)', fontWeight: 500 }}>
-              {configs.filter(c => c.phase === 'debate' && c.isEnabled).length} 个辩论 AI · 可增减
+              {t('config.debateAiCount', { count: debateCount })}
             </p>
           </div>
           <button onClick={addDebater} className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 14px' }}>
-            + 添加辩论 AI
+            {t('config.addDebate')}
           </button>
         </div>
 
         {/* Prep layer */}
-        <SectionLabel label="准备层" />
+        <SectionLabel label={t('config.preparation')} />
         <div>
         {configs.filter(c => c.phase === 'prep').map((cfg, i) => (
           <div key={cfg.roleKey} className="anim-up" style={{ animationDelay: `${i * 0.04}s` } as React.CSSProperties}>
@@ -99,7 +102,7 @@ export default function Config() {
         </div>
 
         {/* Debate layer */}
-        <SectionLabel label={`辩论层 · ${configs.filter(c => c.phase === 'debate' && c.isEnabled).length} 个 AI + 汇总`} />
+        <SectionLabel label={t('config.debateLayerDesc', { count: debateCount })} />
         <div>
         {configs.filter(c => c.phase === 'debate').map((cfg, i) => (
           <div key={cfg.roleKey} className="anim-up" style={{ animationDelay: `${i * 0.04}s` } as React.CSSProperties}>
@@ -119,7 +122,7 @@ export default function Config() {
         </div>
 
         {/* Summary layer */}
-        <SectionLabel label="总结层" />
+        <SectionLabel label={t('config.summary')} />
         <div>
         {configs.filter(c => c.phase === 'summary').map((cfg, i) => (
           <div key={cfg.roleKey} className="anim-up" style={{ animationDelay: `${i * 0.04}s` } as React.CSSProperties}>
@@ -155,6 +158,7 @@ function ConfigCard({
   onUpdate: (rk: string, p: Partial<AIConfig>) => void;
   isFixed: boolean; onRemove?: () => void; canRemove?: boolean;
 }) {
+  const { t } = useTranslation();
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
   const [keyValue, setKeyValue] = useState('');
 
@@ -192,7 +196,7 @@ function ConfigCard({
   if (!apiKeyLoaded) {
     return (
       <div className="glass" style={{ marginBottom: 8, padding: '10px 16px' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>加载中...</span>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('config.loading')}</span>
       </div>
     );
   }
@@ -251,7 +255,7 @@ function ConfigCard({
             )}
           </div>
           <span style={{ fontSize: 10.5, fontWeight: 500, color: hasKey ? 'var(--text-secondary)' : 'var(--text-tertiary)', flexShrink: 0 }}>
-            {hasKey ? (PROVIDERS.find(p => p.key === cfg.provider)?.label || cfg.provider) : '未配置'}
+            {hasKey ? (PROVIDERS.find(p => p.key === cfg.provider)?.label || cfg.provider) : t('config.unconfigured')}
           </span>
           <span
             className={`status-dot ${hasKey ? 'active' : 'idle'}`}
@@ -272,7 +276,7 @@ function ConfigCard({
               }}
               onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
               onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
-            >删除</button>
+            >{t('config.delete')}</button>
           )}
         </button>
 
@@ -289,7 +293,7 @@ function ConfigCard({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                      提供商
+                      {t('config.provider')}
                     </label>
                     <select
                       value={cfg.provider}
@@ -304,7 +308,7 @@ function ConfigCard({
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                      模型
+                      {t('config.model')}
                     </label>
                     <input
                       type="text" value={cfg.modelName}
@@ -317,13 +321,13 @@ function ConfigCard({
                 {/* API Key */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                    API Key {window.electronAPI ? '(安全加密存储)' : ''}
+                    {t('config.apiKey')} {window.electronAPI ? t('config.secure') : ''}
                   </label>
                   <input
                     type="password"
                     value={keyValue}
                     onChange={e => handleKeyChange(e.target.value)}
-                    placeholder="sk-...（必填）"
+                    placeholder={t('config.apiKeyPlaceholder')}
                     className="input" style={{ fontSize: 13, padding: '7px 10px' }}
                   />
                 </div>
@@ -331,7 +335,7 @@ function ConfigCard({
                 {/* Base URL */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                    Base URL
+                    {t('config.baseUrl')}
                   </label>
                   <input
                     type="text" value={cfg.baseUrl}
@@ -343,7 +347,7 @@ function ConfigCard({
                 {/* Temperature */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                    Temperature · {cfg.temperature}
+                    {t('config.temperature')} · {cfg.temperature}
                   </label>
                   <input
                     type="range" min="0" max="2" step="0.1" value={cfg.temperature}
@@ -355,7 +359,7 @@ function ConfigCard({
                 {/* System Prompt */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
-                    系统提示词
+                    {t('config.systemPrompt')}
                   </label>
                   <textarea
                     value={cfg.systemPrompt} rows={isFixed ? 5 : 6}
@@ -365,7 +369,7 @@ function ConfigCard({
                       fontSize: 12, lineHeight: 1.6, resize: 'vertical', padding: '8px 10px',
                       fontFamily: 'ui-monospace, SF Mono, monospace', minHeight: 80,
                     }}
-                    placeholder={isFixed ? '' : '自定义提示词...'}
+                    placeholder={isFixed ? '' : t('config.systemPromptPlaceholder')}
                   />
                 </div>
               </div>
@@ -373,6 +377,25 @@ function ConfigCard({
             </div>
           </div>
         )}
+
+        {/* Enabled toggle row (outside the dropdown) */}
+        <div style={{
+          padding: '8px 16px',
+          borderTop: '1px solid rgba(255,255,255,0.02)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{t('config.enabled')}</span>
+          <label style={{ position: 'relative', display: 'inline-block', width: 32, height: 18, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={cfg.isEnabled}
+              onChange={e => onUpdate(cfg.roleKey, { isEnabled: e.target.checked })}
+              style={{ opacity: 0, width: 0, height: 0 }}
+            />
+          </label>
+        </div>
       </div>
     </div>
   );

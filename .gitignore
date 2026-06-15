@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# Symlinks
+源码/node_modules
+
 # Build output
 dist/
 build/

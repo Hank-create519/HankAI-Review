@@ -7,6 +7,7 @@ import Config from './pages/Config';
 import TaskNew from './pages/TaskNew';
 import TaskMonitor from './pages/TaskMonitor';
 import History from './pages/History';
+import About from './pages/About';
 import { useEffect } from 'react';
 import { setPersistHandler } from './sdk/engine';
 import { useReviewEngine } from './sdk/react';
@@ -95,6 +96,7 @@ function AppLayout() {
           <Route path="/monitor" element={<TaskMonitor />} />
           <Route path="/config" element={<Config />} />
           <Route path="/history" element={<History />} />
+          <Route path="/about" element={<About />} />
         </Routes>
       </main>
     </div>

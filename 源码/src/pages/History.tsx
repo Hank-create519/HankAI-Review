@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useReviewEngine } from '../sdk/react';
+import { useTranslation } from 'react-i18next';
 import type { ReviewTask, FinalReport } from '../types';
 
 interface HistoryEntry {
@@ -26,6 +27,7 @@ function saveHistory(entries: HistoryEntry[]) {
 }
 
 export default function History() {
+  const { t } = useTranslation();
   const { task, finalReport, isRunning } = useReviewEngine();
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
 
@@ -89,9 +91,9 @@ export default function History() {
 
   const statusLabel = (s: string) => {
     switch (s) {
-      case 'completed': return '已完成';
-      case 'error': return '失败';
-      case 'preparing': case 'debating': case 'summarizing': return '进行中';
+      case 'completed': return t('history.completed');
+      case 'error': return t('history.failed');
+      case 'preparing': case 'debating': case 'summarizing': return t('history.inProgress');
       default: return s;
     }
   };
@@ -108,7 +110,7 @@ export default function History() {
     <div style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{ maxWidth: 580, margin: '0 auto', padding: '40px 40px' }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 24 }} className="anim-up">
-          历史记录
+          {t('history.title')}
         </h2>
 
         {/* Search & Filter Bar */}
@@ -117,7 +119,7 @@ export default function History() {
             type="text"
             value={searchTitle}
             onChange={e => setSearchTitle(e.target.value)}
-            placeholder="搜索标题或报告内容..."
+            placeholder={t('history.search')}
             className="input" style={{ fontSize: 13, padding: '9px 12px', marginBottom: 10 }}
           />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -126,25 +128,25 @@ export default function History() {
               onChange={e => setFilterStatus(e.target.value)}
               className="input" style={{ fontSize: 12, padding: '6px 10px', width: 'auto' }}
             >
-              <option value="all">全部状态</option>
-              <option value="completed">已完成</option>
-              <option value="error">失败</option>
-              <option value="preparing">进行中</option>
+              <option value="all">{t('history.allStatus')}</option>
+              <option value="completed">{t('history.completed')}</option>
+              <option value="error">{t('history.failed')}</option>
+              <option value="preparing">{t('history.inProgress')}</option>
             </select>
             <input
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
               className="input" style={{ fontSize: 12, padding: '6px 10px', width: 'auto' }}
-              title="开始日期"
+              title={t('history.from')}
             />
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', alignSelf: 'center' }}>至</span>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', alignSelf: 'center' }}>{t('history.toLabel')}</span>
             <input
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
               className="input" style={{ fontSize: 12, padding: '6px 10px', width: 'auto' }}
-              title="结束日期"
+              title={t('history.to')}
             />
             {(searchTitle || filterStatus !== 'all' || dateFrom || dateTo) && (
               <button
@@ -157,7 +159,7 @@ export default function History() {
                 onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
               >
-                清除筛选
+                {t('history.clearFilter')}
               </button>
             )}
           </div>
@@ -171,43 +173,43 @@ export default function History() {
               background: 'radial-gradient(circle, rgba(79,108,247,0.06) 0%, transparent 70%)',
             }} />
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500, marginBottom: 6 }}>
-              {allEntries.length === 0 ? '暂无审查记录' : '无匹配结果'}
+              {allEntries.length === 0 ? t('history.noRecords') : t('history.noMatch')}
             </p>
             {allEntries.length === 0 && (
-              <Link to="/new" className="btn btn-secondary" style={{ fontSize: 13 }}>新建审查</Link>
+              <Link to="/new" className="btn btn-secondary" style={{ fontSize: 13 }}>{t('history.newBtn')}</Link>
             )}
           </div>
         ) : (
           <div className="stagger">
             {filtered.map((entry, i) => {
-              const { task: t, finalReport: fr } = entry;
-              const st = statusColor(t.status);
+              const { task: tk, finalReport: fr } = entry;
+              const st = statusColor(tk.status);
               return (
                 <div
-                  key={t.id}
+                  key={tk.id}
                   className="surface anim-up"
                   style={{ padding: '20px', marginBottom: 8, animationDelay: `${i * 0.03}s` } as React.CSSProperties}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                     <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.35, flex: 1, marginRight: 12 }}>
-                      {t.title}
+                      {tk.title}
                     </span>
                     <span style={{
                       fontSize: 11, fontWeight: 700, letterSpacing: '0.04em',
                       padding: '3px 10px', borderRadius: 'var(--radius-sm)',
                       background: st.bg, color: st.text, flexShrink: 0,
                     }}>
-                      {statusLabel(t.status)}
+                      {statusLabel(tk.status)}
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 500, marginBottom: 12 }}>
-                    <p>审查轮数 · {t.totalRounds}</p>
-                    <p>创建 · {new Date(t.createdAt).toLocaleString('zh-CN')}</p>
-                    {t.completedAt && (
-                      <p>完成 · {new Date(t.completedAt).toLocaleString('zh-CN')}</p>
+                    <p>{t('history.rounds')} · {tk.totalRounds}</p>
+                    <p>{t('history.created')} · {new Date(tk.createdAt).toLocaleString('zh-CN')}</p>
+                    {tk.completedAt && (
+                      <p>{t('history.finished')} · {new Date(tk.completedAt).toLocaleString('zh-CN')}</p>
                     )}
-                    {t.errorMessage && (
-                      <p style={{ color: 'var(--err)' }}>错误 · {t.errorMessage}</p>
+                    {tk.errorMessage && (
+                      <p style={{ color: 'var(--err)' }}>{t('history.errorMsg')} · {tk.errorMessage}</p>
                     )}
                   </div>
                   {fr && (
@@ -220,11 +222,11 @@ export default function History() {
                         onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
                         onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
                       >
-                        查看报告
+                        {t('history.viewReport')}
                       </summary>
                       <pre className="ai-text" style={{ marginTop: 12, maxHeight: 256, overflowY: 'auto', fontSize: 12 }}>
                         {fr.reportContent.slice(0, 5000)}
-                        {fr.reportContent.length > 5000 && '\n\n... (内容过长，已截断)'}
+                        {fr.reportContent.length > 5000 && `\n\n${t('history.truncated')}`}
                       </pre>
                     </details>
                   )}
@@ -232,7 +234,8 @@ export default function History() {
               );
             })}
             <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-tertiary)', paddingTop: 12 }}>
-              共 {filtered.length} 条记录{filtered.length < allEntries.length ? `（已筛选，共 ${allEntries.length} 条）` : ''}
+              {t('history.totalRecords', { count: filtered.length })}
+              {filtered.length < allEntries.length ? t('history.filteredRecords', { count: allEntries.length }) : ''}
             </p>
           </div>
         )}
