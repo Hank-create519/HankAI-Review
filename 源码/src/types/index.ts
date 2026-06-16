@@ -57,6 +57,71 @@ export interface PromptInput {
   multiline?: boolean;
 }
 
+// ============ 技能管理相关类型 ============
+
+/** 数据源类型 */
+export type DataSourceType = 'github' | 'database';
+
+/** GitHub 仓库数据源 */
+export interface GitHubRepo {
+  type: 'github';
+  id: string;
+  url: string;
+  token?: string;
+  label: string;
+}
+
+/** 数据库连接（UI 占位） */
+export interface DatabaseConnection {
+  type: 'database';
+  id: string;
+  dbType: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  label: string;
+}
+
+export type DataSource = GitHubRepo | DatabaseConnection;
+
+/** 技能来源 */
+export type SkillSource = 'builtin' | 'github' | 'database';
+
+/** 外部技能配置 */
+export interface ExternalSkill {
+  name: string;
+  description: string;
+  toolType: string;
+  icon?: string;
+  source: SkillSource;
+  sourceUrl?: string;
+  sourceId?: string;
+  params?: Record<string, unknown>;
+}
+
+/** 技能池条目（含来源标记） */
+export interface SkillEntry {
+  name: string;
+  description: string;
+  toolType: string;
+  icon?: string;
+  source: SkillSource;
+  sourceUrl?: string;
+  sourceId?: string;
+}
+
+/** 技能分配快照（用于导出/导入） */
+export interface SkillAssignmentSnapshot {
+  version: 1;
+  exportedAt: string;
+  dataSources: DataSource[];
+  assignments: Record<string, string[]>;
+}
+
+// ============ 原有常量 ============
+
 export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; modelName: string }> = {
   openai: { baseUrl: 'https://api.openai.com/v1/chat/completions', modelName: 'gpt-4o' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1/messages', modelName: 'claude-3-opus-20240229' },

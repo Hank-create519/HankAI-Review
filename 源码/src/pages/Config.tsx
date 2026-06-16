@@ -3,6 +3,7 @@ import { useReviewEngine } from '../sdk/react';
 import { PROVIDER_DEFAULTS } from '../types';
 import { updateConfig } from '../hooks/useDB';
 import { useTranslation } from 'react-i18next';
+import SkillManager from '../components/SkillManager';
 import type { AIConfig } from '../types';
 
 const PROVIDERS: { key: string; label: string }[] = [
@@ -18,7 +19,6 @@ const PROVIDERS: { key: string; label: string }[] = [
   { key: 'custom', label: '自定义' },
 ];
 
-/** 每个角色可用的 skill 选项，与 safetyGuard 白名单保持一致 */
 interface SkillOption { key: string; label: string; }
 
 function getRoleSkillOptions(roleKey: string): SkillOption[] {
@@ -27,31 +27,30 @@ function getRoleSkillOptions(roleKey: string): SkillOption[] {
     { key: 'web_fetch', label: '网页抓取' },
   ];
 
-  // extractor / extractor2: 仅 web_search
   if (roleKey === 'extractor' || roleKey === 'extractor2') {
     return ALL_SKILLS.filter(s => s.key === 'web_search');
   }
-  // debate 角色（含自定义 ai_debate_N）: web_search + web_fetch
   if (
     roleKey === 'debate_ai1' || roleKey === 'debate_ai2' || roleKey === 'debate_ai3' ||
     roleKey.startsWith('ai_debate_')
   ) {
     return ALL_SKILLS;
   }
-  // integrator / final_integrator: web_search
   if (roleKey === 'integrator' || roleKey === 'final_integrator') {
     return ALL_SKILLS.filter(s => s.key === 'web_search');
   }
-  // round_judge 及其他未知角色：无
   return [];
 }
 
 let _debateCounter = 3;
 
+type ConfigTab = 'basic' | 'skills';
+
 export default function Config() {
   const { t } = useTranslation();
   const { configs, updateConfigs } = useReviewEngine();
   const [openRole, setOpenRole] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ConfigTab>('basic');
 
   const persistTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const persistConfig = (rk: string, p: Partial<AIConfig>) => {
@@ -99,9 +98,39 @@ export default function Config() {
 
   const debateCount = configs.filter(c => c.phase === 'debate' && c.isEnabled).length;
 
+  if (activeTab === 'skills') {
+    return <SkillManager />;
+  }
+
   return (
     <div style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{ maxWidth: 580, margin: '0 auto', padding: '48px 40px' }}>
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 32, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {([
+            { key: 'basic' as ConfigTab, label: '基础配置' },
+            { key: 'skills' as ConfigTab, label: '技能管理' },
+          ]).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: '8px 16px',
+                fontSize: 13,
+                fontWeight: activeTab === tab.key ? 600 : 400,
+                color: activeTab === tab.key ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                border: 'none',
+                borderBottom: activeTab === tab.key ? '2px solid #4f6cf7' : '2px solid transparent',
+                background: 'transparent',
+                cursor: 'pointer',
+                transition: 'all 150ms',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40 }} className="anim-up">
           <div>
@@ -244,7 +273,6 @@ function ConfigCard({
           : 'rgba(255,255,255,0.015)',
         transition: 'background 250ms var(--ease-out-expo)',
       }}>
-        {/* Card header */}
         <button
           onClick={onToggle}
           style={{
@@ -308,7 +336,6 @@ function ConfigCard({
           )}
         </button>
 
-        {/* Expanded content */}
         {isOpen && (
           <div
             className="config-card-content open"
@@ -317,7 +344,6 @@ function ConfigCard({
             <div>
             <div style={{ padding: '0 16px 20px', paddingTop: 16 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Provider + Model */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
@@ -346,7 +372,6 @@ function ConfigCard({
                   </div>
                 </div>
 
-                {/* API Key */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
                     {t('config.apiKey')} {window.electronAPI ? t('config.secure') : ''}
@@ -360,7 +385,6 @@ function ConfigCard({
                   />
                 </div>
 
-                {/* Base URL */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
                     {t('config.baseUrl')}
@@ -372,7 +396,6 @@ function ConfigCard({
                   />
                 </div>
 
-                {/* Temperature */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
                     {t('config.temperature')} · {cfg.temperature}
@@ -384,7 +407,6 @@ function ConfigCard({
                   />
                 </div>
 
-                {/* Skills (tools) — only for non-judge roles */}
                 {cfg.roleKey !== 'round_judge' && (() => {
                   const skillOpts = getRoleSkillOptions(cfg.roleKey);
                   if (skillOpts.length === 0) return null;
@@ -419,7 +441,6 @@ function ConfigCard({
                   );
                 })()}
 
-                {/* System Prompt */}
                 <div>
                   <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
                     {t('config.systemPrompt')}
@@ -441,7 +462,6 @@ function ConfigCard({
           </div>
         )}
 
-        {/* Enabled toggle row (outside the dropdown) */}
         <div style={{
           padding: '8px 16px',
           borderTop: '1px solid rgba(255,255,255,0.02)',
