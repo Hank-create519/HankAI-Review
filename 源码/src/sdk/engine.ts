@@ -537,22 +537,71 @@ export async function startReview(title: string, userInput: string, _promptInput
         : `【第 ${round} 轮辩论】\n请基于前几轮的辩论结果，进一步深化分析。\n\n前序讨论摘要：\n${debateHistory.slice(-3).map(d => `[${d.roleName}]: ${d.content.slice(0, 300)}`).join('\n\n')}`;
 
       for (const cfg of debateConfigs) {
-        const result = await callAI(cfg, [
-          { role: 'system', content: cfg.systemPrompt },
-          { role: 'user', content: debateMsg },
-        ], abortController.signal);
+        if (abortController.signal.aborted) break;
 
-        debateHistory.push({ roleName: cfg.roleName, content: result });
+        while (_state.isPaused) {
+          await new Promise<void>(resolve => { _state.pausedResolve = resolve; });
+          if (abortController.signal.aborted) break;
+        }
+        if (abortController.signal.aborted) break;
+
+        const startTime = Date.now();
+        const outputId = ++outputIdCounter;
 
         _state.outputs.push({
-          id: ++outputIdCounter,
+          id: outputId,
           roundNumber: round,
           roleName: cfg.roleName,
           roleKey: cfg.roleKey,
-          status: 'completed',
-          outputContent: result,
+          status: 'running',
+          outputContent: '',
           responseTimeMs: 0,
         });
+        notify();
+
+        try {
+          // 从 cfg.skills 构建 tools（参考 runPhase 逻辑）
+          const debateSkills = cfg.skills;
+          const debateTools = debateSkills && debateSkills.length > 0
+            ? toOpenAITools(
+                debateSkills.map(s => getToolByName(s)).filter(Boolean) as any[],
+              )
+            : [];
+
+          let result: string;
+          if (debateTools.length > 0) {
+            result = await callAIWithTools(
+              cfg,
+              [
+                { role: 'system', content: cfg.systemPrompt },
+                { role: 'user', content: debateMsg },
+              ],
+              debateTools,
+              sessionId,
+              round,
+              abortController.signal,
+            );
+          } else {
+            result = await callAI(cfg, [
+              { role: 'system', content: cfg.systemPrompt },
+              { role: 'user', content: debateMsg },
+            ], abortController.signal);
+          }
+
+          const elapsed = Date.now() - startTime;
+          debateHistory.push({ roleName: cfg.roleName, content: result });
+
+          _state.outputs = _state.outputs.map(o =>
+            o.id === outputId ? { ...o, status: 'completed' as const, outputContent: result, responseTimeMs: elapsed } : o
+          );
+        } catch (err: any) {
+          const elapsed = Date.now() - startTime;
+          debateHistory.push({ roleName: cfg.roleName, content: `错误: ${err.message}` });
+          _state.outputs = _state.outputs.map(o =>
+            o.id === outputId ? { ...o, status: 'error' as const, outputContent: `错误: ${err.message}`, responseTimeMs: elapsed } : o
+          );
+        }
+
         updateProgress('debate', round);
       }
 
