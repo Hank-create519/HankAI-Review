@@ -1,5 +1,5 @@
 // Hank个人工作室 AI审查系统 1.0 · Electron 主进程
-const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, safeStorage, clipboard, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -127,15 +127,11 @@ const SYSTEM_PROMPTS = {
 2. 评估辩论质量（是否充分展开、是否有盲区）
 3. 判断是否需要进行下一轮辩论
 请以中性、客观的态度进行汇总。`,
-  round_judge: `你是Hank个人工作室 AI审查系统的轮次裁判。你的职责是在信息提取阶段完成后，基于提取器对用户输入的结构化分析，评估审查内容的复杂度，判定需要几轮辩论。
-
-判定标准：
-- 简单问题（观点明确、维度单一）：1-2轮
-- 一般问题（有一定复杂度、涉及2-3个维度）：2-3轮
-- 复杂问题（多维度交叉、需要深入辩论）：3-4轮
-- 高度复杂问题（涉及多方利益、战略决策）：4-5轮
-
-请在分析后明确输出轮数判定，格式为："经评估，需要X轮辩论"，并简要说明判定理由。`,
+  round_judge: `你是Hank个人工作室 AI审查系统的轮次裁判。请基于当前轮次的辩论情况做出判断：
+1. 辩论是否充分（各AI观点是否已经清晰表达）
+2. 是否需要额外辩论轮次
+3. 如果需要继续，下一轮的重点方向是什么
+请给出明确的判定和建议。`,
   final_integrator: `你是Hank个人工作室 AI审查系统的最终报告生成员。请基于所有对话记录生成最终审查报告：
 1. 综合所有AI的审查意见
 2. 汇总关键发现和建议
@@ -319,10 +315,61 @@ ipcMain.handle('secure:delete-key', (_event, roleKey) => {
   }
 });
 
+// ============ 剪贴板 IPC ============
+ipcMain.handle('clipboard:readText', () => clipboard.readText());
+
+// ============ 自定义菜单（确保 file:// 下 Edit > Paste 可用） ============
+function setupMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 let mainWindow = null;
 
 function createWindow() {
-  const isDev = !app.isPackaged;
+  const isDev = false; // !app.isPackaged
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -355,6 +402,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   await initDB();
   createWindow();
+  setupMenu();
 });
 
 app.on('window-all-closed', () => {

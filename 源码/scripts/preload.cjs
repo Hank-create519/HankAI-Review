@@ -21,3 +21,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getReport: (taskId) => ipcRenderer.invoke('db:get-report', taskId),
   },
 });
+
+// === DOM 级粘贴拦截（精简测试版） ===
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'v' || e.key === 'V') && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+    const target = document.activeElement;
+    const isEditable = target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.isContentEditable
+    );
+    if (!isEditable) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    ipcRenderer.invoke('clipboard:readText').then((text) => {
+      if (text) {
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+          const start = target.selectionStart ?? 0;
+          const end = target.selectionEnd ?? 0;
+          target.setRangeText(text, start, end, 'end');
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          document.execCommand('insertText', false, text);
+        }
+      }
+    }).catch((err) => console.error('[Preload] paste failed:', err));
+  }
+}, true);
