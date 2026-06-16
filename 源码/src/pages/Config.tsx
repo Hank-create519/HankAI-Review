@@ -18,6 +18,34 @@ const PROVIDERS: { key: string; label: string }[] = [
   { key: 'custom', label: '自定义' },
 ];
 
+/** 每个角色可用的 skill 选项，与 safetyGuard 白名单保持一致 */
+interface SkillOption { key: string; label: string; }
+
+function getRoleSkillOptions(roleKey: string): SkillOption[] {
+  const ALL_SKILLS: SkillOption[] = [
+    { key: 'web_search', label: '联网搜索' },
+    { key: 'web_fetch', label: '网页抓取' },
+  ];
+
+  // extractor / extractor2: 仅 web_search
+  if (roleKey === 'extractor' || roleKey === 'extractor2') {
+    return ALL_SKILLS.filter(s => s.key === 'web_search');
+  }
+  // debate 角色（含自定义 ai_debate_N）: web_search + web_fetch
+  if (
+    roleKey === 'debate_ai1' || roleKey === 'debate_ai2' || roleKey === 'debate_ai3' ||
+    roleKey.startsWith('ai_debate_')
+  ) {
+    return ALL_SKILLS;
+  }
+  // integrator / final_integrator: web_search
+  if (roleKey === 'integrator' || roleKey === 'final_integrator') {
+    return ALL_SKILLS.filter(s => s.key === 'web_search');
+  }
+  // round_judge 及其他未知角色：无
+  return [];
+}
+
 let _debateCounter = 3;
 
 export default function Config() {
@@ -355,6 +383,41 @@ function ConfigCard({
                     style={{ width: '100%', accentColor: '#4f6cf7', height: 3 }}
                   />
                 </div>
+
+                {/* Skills (tools) — only for non-judge roles */}
+                {cfg.roleKey !== 'round_judge' && (() => {
+                  const skillOpts = getRoleSkillOptions(cfg.roleKey);
+                  if (skillOpts.length === 0) return null;
+                  const cur = cfg.skills || [];
+                  return (
+                    <div>
+                      <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>
+                        Skills · 工具
+                      </label>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {skillOpts.map(sk => (
+                          <label key={sk.key} style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={cur.includes(sk.key)}
+                              onChange={e => {
+                                const next = e.target.checked
+                                  ? [...cur, sk.key]
+                                  : cur.filter(k => k !== sk.key);
+                                onUpdate(cfg.roleKey, { skills: next });
+                              }}
+                              style={{ accentColor: '#4f6cf7' }}
+                            />
+                            {sk.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* System Prompt */}
                 <div>

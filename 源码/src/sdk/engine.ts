@@ -1,9 +1,31 @@
-// Hank个人工作室 AI审查系统 · 审查引擎 v1.0
+// Hank个人工作室 AI审查系统 · 审查引擎 v1.1（支持工具调用）
 
 import type { AIConfig, ReviewTask, ReviewOutput, FinalReport, ReviewProgress, PromptInput } from '../types';
 import { DEFAULT_CONFIGS } from '../types';
+import { getToolByName, toOpenAITools } from '../skills/toolRegistry';
+import {
+  fullSafetyCheck,
+  executeTool,
+  recordToolCall,
+  clearSession,
+  sanitizeResult,
+  validateFilePath,
+  PYTHON_TIMEOUT_MS,
+  setWorkDir,
+  type SafetyCheckResult,
+} from '../skills/safetyGuard';
 
-// ============ 外部 AI 调用 ============
+// ============ 工作目录初始化 ============
+
+// 从 AIConfig 注入工作目录（审查开始前调用）
+function initWorkDir() {
+  // 使用 Electron userData 或默认路径
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.getWorkDir) {
+    (window as any).electronAPI.getWorkDir().then((dir: string) => setWorkDir(dir));
+  }
+}
+
+// ============ 外部 AI 调用（原始，无工具） ============
 
 async function callAI(cfg: AIConfig, messages: { role: string; content: string }[], signal?: AbortSignal): Promise<string> {
   if (!cfg.apiKey || cfg.apiKey === 'demo') {
@@ -38,6 +60,178 @@ async function callAI(cfg: AIConfig, messages: { role: string; content: string }
 
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
+}
+
+// ============ AI 调用（支持 Function Calling 工具循环） ============
+
+interface ToolMessage {
+  role: string;
+  content: string | null;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
+}
+
+/**
+ * callAIWithTools：支持 OpenAI function calling 的 tool loop。
+ * 当 LLM 返回 tool_calls 时，通过 safetyGuard 校验后执行工具，
+ * 结果注入 messages 继续循环，直到模型返回最终文本或达到最大迭代次数。
+ */
+async function callAIWithTools(
+  cfg: AIConfig,
+  messages: ToolMessage[],
+  tools: Record<string, any>[],
+  sessionId: string,
+  round: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!cfg.apiKey || cfg.apiKey === 'demo') {
+    throw new Error(`角色「${cfg.roleName}」未配置有效的 API Key，请在配置页面填写真实 API Key 后重试。`);
+  }
+
+  const controller = new AbortController();
+  if (signal) {
+    signal.addEventListener('abort', () => controller.abort());
+  }
+
+  const MAX_ITERATIONS = 5;
+
+  // 深拷贝 messages 以避免污染原始数组
+  const localMessages: ToolMessage[] = messages.map(m => ({ ...m }));
+
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const res = await fetch(cfg.baseUrl || 'https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.modelName || 'gpt-4o',
+        messages: localMessages,
+        tools,
+        temperature: cfg.temperature ?? 0.3,
+        max_tokens: cfg.maxTokens || 4096,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`AI 调用失败 [${res.status}]: ${text.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const choice = data.choices?.[0];
+    if (!choice) return '';
+
+    // 检查是否有 tool_calls
+    if (choice.finish_reason === 'tool_calls' && choice.message?.tool_calls?.length > 0) {
+      const toolCalls = choice.message.tool_calls;
+
+      // 将 assistant 消息（含 tool_calls）加入 messages
+      localMessages.push({
+        role: 'assistant',
+        content: '', // OpenAI 协议：有 tool_calls 时 content 应为空字符串
+        tool_calls: toolCalls,
+      });
+
+      // 依次执行每个工具调用
+      const toolResults: ToolMessage[] = [];
+      for (const tc of toolCalls) {
+        const toolName = tc.function?.name || '';
+        let args: Record<string, string> = {};
+        try {
+          args = JSON.parse(tc.function?.arguments || '{}');
+        } catch {
+          args = {};
+        }
+
+        // 五层安全校验
+        const safetyResult: SafetyCheckResult = fullSafetyCheck(
+          cfg.roleKey,
+          toolName,
+          args,
+          sessionId,
+          round,
+        );
+
+        let toolContent: string;
+        if (!safetyResult.passed) {
+          toolContent = `[安全拦截] ${safetyResult.error}`;
+        } else {
+          recordToolCall(sessionId, cfg.roleKey, round);
+          toolContent = await executeTool(toolName, args, {
+            readFile: executeReadFile,
+            pythonExec: executePythonSandbox,
+          });
+        }
+
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: toolContent,
+        });
+      }
+
+      // 将工具结果加入 messages
+      localMessages.push(...toolResults);
+
+      // 继续循环
+      continue;
+    }
+
+    // 正常文本回复
+    return choice.message?.content || '';
+  }
+
+  // 达到最大迭代次数：收集所有 assistant 文本回复并拼接
+  const texts = localMessages
+    .filter(m => m.role === 'assistant' && typeof m.content === 'string' && m.content)
+    .map(m => m.content as string);
+  return texts.join('\n\n') || '[工具循环达到最大迭代次数，未获得最终文本回复]';
+}
+
+// ============ read_file 安全执行器 ============
+
+async function executeReadFile(filePath: string): Promise<string> {
+  // 二次校验（safetyGuard 已做，此处兜底）
+  const err = validateFilePath(filePath);
+  if (err) return `[安全拦截] ${err}`;
+
+  try {
+    // 在 Electron 环境中通过 IPC 读取文件
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.readFile) {
+      const content = await (window as any).electronAPI.readFile(filePath);
+      return sanitizeResult(content);
+    }
+    // 浏览器环境兜底：尝试 fetch（仅限 public 可访问文件）
+    const res = await fetch(`file://${filePath}`, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return `文件读取失败: HTTP ${res.status}`;
+    return sanitizeResult(await res.text());
+  } catch (err: any) {
+    return `文件读取失败: ${err.message}`;
+  }
+}
+
+// ============ Python 沙箱执行器 ============
+
+async function executePythonSandbox(code: string): Promise<string> {
+  try {
+    // Electron 环境：通过 IPC 调用主进程执行 Python
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.execPython) {
+      const result = await (window as any).electronAPI.execPython(code, PYTHON_TIMEOUT_MS);
+      return sanitizeResult(result);
+    }
+
+    // 浏览器环境（Vite dev 模式）：Python 不可用，返回说明
+    return '[Python 执行不可用] 当前运行在浏览器环境，Python 子进程需要 Electron 主进程支持。' +
+      '\n请在 Electron 应用中运行以启用此功能，或通过 electronAPI.execPython 桥接。';
+  } catch (err: any) {
+    return `Python 执行错误: ${err.message}`;
+  }
 }
 
 // ============ 轮数判定（内嵌算法，不调用 AI） ============
@@ -164,6 +358,9 @@ export function setConfigs(configs: AIConfig[]) {
 export async function startReview(title: string, userInput: string, _promptInputs?: PromptInput[]) {
   if (_state.isRunning) return;
 
+  // 初始化工作目录
+  initWorkDir();
+
   const enabledConfigs = _state.configs.filter(c => c.isEnabled);
   if (enabledConfigs.length === 0) {
     throw new Error('没有启用任何 AI 配置');
@@ -177,6 +374,7 @@ export async function startReview(title: string, userInput: string, _promptInput
   _state.finalReport = null;
 
   const taskId = Date.now().toString();
+  const sessionId = taskId; // 使用 taskId 作为 sessionId
 
   _state.task = {
     id: taskId,
@@ -212,7 +410,19 @@ export async function startReview(title: string, userInput: string, _promptInput
 
   let outputIdCounter = 0;
 
-  async function runPhase(configs: AIConfig[], round: number, systemMsg: string, userMsg: string, phase: string): Promise<void> {
+  /**
+   * runPhase：执行阶段任务。
+   * 支持 skills 参数：当 cfg.skills 非空且包含支持的工具时，使用 callAIWithTools；
+   * 否则降级使用原始 callAI。
+   */
+  async function runPhase(
+    configs: AIConfig[],
+    round: number,
+    systemMsg: string,
+    userMsg: string,
+    phase: string,
+    skills?: string[],
+  ): Promise<void> {
     for (const cfg of configs) {
       if (abortController.signal.aborted) return;
 
@@ -237,10 +447,40 @@ export async function startReview(title: string, userInput: string, _promptInput
       notify();
 
       try {
-        const result = await callAI(cfg, [
-          { role: 'system', content: systemMsg },
-          { role: 'user', content: userMsg },
-        ], abortController.signal);
+        // 决定使用哪种调用方式
+        const effectiveSkills = skills ?? cfg.skills;
+        const hasTools = effectiveSkills && effectiveSkills.length > 0;
+
+        let result: string;
+        if (hasTools) {
+          const tools = toOpenAITools(
+            effectiveSkills.map(s => getToolByName(s)).filter(Boolean) as any[],
+          );
+          if (tools.length > 0) {
+            result = await callAIWithTools(
+              cfg,
+              [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: userMsg },
+              ],
+              tools,
+              sessionId,
+              round,
+              abortController.signal,
+            );
+          } else {
+            // skills 配置了但未匹配到任何工具，降级为原始调用
+            result = await callAI(cfg, [
+              { role: 'system', content: systemMsg },
+              { role: 'user', content: userMsg },
+            ], abortController.signal);
+          }
+        } else {
+          result = await callAI(cfg, [
+            { role: 'system', content: systemMsg },
+            { role: 'user', content: userMsg },
+          ], abortController.signal);
+        }
 
         const elapsed = Date.now() - startTime;
 
@@ -396,6 +636,7 @@ export async function startReview(title: string, userInput: string, _promptInput
     _state.isRunning = false;
     _state.isPaused = false;
     _state.abortController = null;
+    clearSession(sessionId);
     notify();
   }
 }
