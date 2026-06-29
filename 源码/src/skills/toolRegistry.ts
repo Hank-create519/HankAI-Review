@@ -1,6 +1,8 @@
 // Hank个人工作室 AI审查系统 · 工具注册表 v1.0
 // 定义所有可用工具及其 JSON Schema、risk 等级、executor
 
+import { searchGitHubSkills } from './githubSkillSearch';
+
 // ============ 工具定义 ============
 
 export interface ToolDef {
@@ -285,6 +287,59 @@ export const TOOL_REGISTRY: ToolDef[] = [
     executor: async (_args) => {
       // python_exec 的 executor 在 safetyGuard 中经过安全校验后才进入
       return '[python_exec executor - 由安全层路由拦截]';
+    },
+  },
+  {
+    name: 'github_skill_search',
+    description:
+      '搜索 GitHub 上可接入框架的 AI 技能。输入需求描述后自动搜索包含 marvis-skills.json 的公开仓库，返回匹配的技能及其原仓库地址。适合发现社区贡献的审查/分析/文档处理等技能。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '需求描述，如"合同条款合规检查"、"财务报表数据分析"、"医疗文献证据等级评估"',
+        },
+        max_repos: {
+          type: 'integer',
+          description: '最大返回仓库数，默认 10',
+        },
+      },
+      required: ['query'],
+    },
+    risk: 'low',
+    executor: async (args) => {
+      const query = (args.query || '').trim();
+      if (!query) return '搜索需求描述不能为空。';
+      const maxRepos = args.max_repos ? Number(args.max_repos) : 10;
+      try {
+        const results = await searchGitHubSkills({ query, maxRepos });
+        if (results.length === 0) {
+          return `未找到与「${query}」匹配的可接入技能。请尝试更通用的关键词，或确认 GitHub 上已有社区贡献的相关 marvis-skills.json 仓库。`;
+        }
+        // 格式化输出
+        const lines: string[] = [`### GitHub 技能搜索结果: 「${query}」\n`];
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          lines.push(`**${i + 1}. [${r.fullName}](${r.htmlUrl})**  ⭐ ${r.stars}`);
+          if (r.description && r.description !== '(无描述)') {
+            lines.push(`   > ${r.description.slice(0, 200)}`);
+          }
+          lines.push(`   语言: ${r.language}  |  更新: ${r.updatedAt.slice(0, 10)}  |  技能总数: ${r.totalSkills}`);
+          lines.push('');
+          for (const sk of r.skills) {
+            const scoreBar = '█'.repeat(Math.round(sk.matchScore / 10)) + '░'.repeat(10 - Math.round(sk.matchScore / 10));
+            lines.push(`   - **${sk.name}** (${sk.toolType}) 匹配度: ${sk.matchScore}% ${scoreBar}`);
+            lines.push(`     ${sk.description.slice(0, 120)}`);
+          }
+          lines.push('');
+        }
+        lines.push('---');
+        lines.push('> 使用 `import_github_skill` 工具并传入仓库地址即可一键导入上述技能。');
+        return lines.join('\n');
+      } catch (err: any) {
+        return `GitHub 技能搜索失败: ${err.message}`;
+      }
     },
   },
 ];

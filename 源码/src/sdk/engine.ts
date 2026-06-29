@@ -32,6 +32,15 @@ async function callAI(cfg: AIConfig, messages: { role: string; content: string }
     throw new Error(`角色「${cfg.roleName}」未配置有效的 API Key，请在配置页面填写真实 API Key 后重试。`);
   }
 
+  // 在首条 system 消息前注入当前日期
+  const today = new Date().toISOString().slice(0, 10);
+  const injectedMessages = messages.map((m, i) => {
+    if (i === 0 && m.role === 'system' && typeof m.content === 'string') {
+      return { ...m, content: `[系统] 当前日期：${today}。你的知识截止于此日期，如需更新信息请使用工具搜索。\n\n${m.content}` };
+    }
+    return m;
+  });
+
   const controller = new AbortController();
   const link = signal;
   if (link) {
@@ -46,7 +55,7 @@ async function callAI(cfg: AIConfig, messages: { role: string; content: string }
     },
     body: JSON.stringify({
       model: cfg.modelName || 'gpt-4o',
-      messages,
+      messages: injectedMessages,
       temperature: cfg.temperature ?? 0.3,
       max_tokens: cfg.maxTokens || 4096,
     }),
@@ -100,9 +109,11 @@ async function callAIWithTools(
   // 深拷贝 messages 以避免污染原始数组
   const localMessages: ToolMessage[] = messages.map(m => ({ ...m }));
 
-  // 在首条 system 消息后追加迭代限制提示
+  // 在首条 system 消息后追加当前日期和迭代限制提示
+  const today = new Date().toISOString().slice(0, 10);
   for (const m of localMessages) {
     if (m.role === 'system' && typeof m.content === 'string') {
+      m.content = `[系统] 当前日期：${today}。你的知识截止于此日期，如需更新信息请使用工具搜索。\n\n${m.content}`;
       m.content += `\n\n[系统提示] 你最多可调用 ${MAX_ITERATIONS} 轮工具。请在获得足够信息后尽早给出最终文本回复，避免耗尽所有轮次导致任务失败。`;
       break;
     }

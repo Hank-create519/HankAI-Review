@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useReviewEngine } from '../sdk/react';
 import { getAllSkills, removeSkillsBySourceId } from '../skills/skillManager';
 import { importFromGitHub } from '../skills/githubImporter';
+import { searchGitHubSkills } from '../skills/githubSkillSearch';
+import type { RepoSearchResult } from '../skills/githubSkillSearch';
 import { updateConfig } from '../hooks/useDB';
 import { DEFAULT_SYSTEM_PROMPTS } from '../types';
 import type { AIConfig, DataSource, GitHubRepo, DatabaseConnection, SkillEntry, SkillAssignmentSnapshot } from '../types';
@@ -77,6 +79,12 @@ export default function SkillManager() {
   // 导入状态
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  // GitHub 技能搜索
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<RepoSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [importingRepo, setImportingRepo] = useState<string | null>(null);
   // 预览 prompt
   const [previewRole, setPreviewRole] = useState<string | null>(null);
 
@@ -379,6 +387,67 @@ export default function SkillManager() {
     setDataSources(prev => prev.filter(d => d.id !== ds.id));
   }
 
+  // GitHub 技能搜索
+  async function handleGitHubSearch() {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchError(null);
+    setSearchResults([]);
+    try {
+      // 从已配置数据源取 token
+      const ghDS = dataSources.find(ds => ds.type === 'github') as GitHubRepo | undefined;
+      const results = await searchGitHubSkills({ query: searchQuery.trim(), token: ghDS?.token });
+      setSearchResults(results);
+      if (results.length === 0) {
+        setSearchError(`未找到与「${searchQuery.trim()}」匹配的技能。请尝试更通用的关键词。`);
+      }
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : '搜索失败');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  // 一键导入搜索结果中的仓库
+  async function handleImportSearchResult(result: RepoSearchResult) {
+    setImportingRepo(result.fullName);
+    try {
+      const ghDS = dataSources.find(ds => ds.type === 'github') as GitHubRepo | undefined;
+      const importResult = await importFromGitHub(result.htmlUrl, ghDS?.token);
+      const newDS: GitHubRepo = {
+        type: 'github',
+        id: importResult.sourceId,
+        url: result.htmlUrl,
+        token: ghDS?.token,
+        label: importResult.repoLabel,
+      };
+      setDataSources(prev => {
+        // 避免重复
+        if (prev.find(d => d.type === 'github' && (d as GitHubRepo).url === result.htmlUrl)) return prev;
+        return [...prev, newDS];
+      });
+      refreshSkills();
+      // 新技能自动加入所有可分配 Agent
+      const newNames = importResult.skills.map(s => s.name);
+      setAssignments(prev => {
+        const next = { ...prev };
+        for (const role of AGENT_ROLES) {
+          if (!role.assignable) continue;
+          const set = new Set(next[role.roleKey] || []);
+          for (const name of newNames) {
+            set.add(name);
+          }
+          next[role.roleKey] = set;
+        }
+        return next;
+      });
+    } catch (err) {
+      alert(`导入失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setImportingRepo(null);
+    }
+  }
+
   // ============ 渲染 ============
 
   const assignableRoles = AGENT_ROLES.filter(r => r.assignable);
@@ -523,6 +592,122 @@ export default function SkillManager() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ===== GitHub 技能搜索 ===== */}
+        <SectionLabel label="GitHub 技能搜索" />
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 10 }}>
+          输入需求关键词，自动搜索 GitHub 上可接入的社区技能，并返回原仓库地址。
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleGitHubSearch(); }}
+            placeholder="例如: 合同条款合规检查、财报数据分析、代码安全审查..."
+            className="input"
+            style={{ flex: 1, fontSize: 12, padding: '7px 10px' }}
+          />
+          <button
+            onClick={handleGitHubSearch}
+            disabled={searching || !searchQuery.trim()}
+            className="btn btn-primary"
+            style={{ fontSize: 12, padding: '7px 16px' }}
+          >
+            {searching ? '搜索中...' : '搜索'}
+          </button>
+        </div>
+        {searchError && (
+          <div style={{
+            padding: '10px 14px', marginBottom: 16, borderRadius: 'var(--radius-sm)',
+            background: 'rgba(239,68,68,0.08)', color: 'var(--err)', fontSize: 12,
+            border: '1px solid rgba(239,68,68,0.15)',
+          }}>
+            {searchError}
+          </div>
+        )}
+        {searchResults.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            {searchResults.map(r => (
+              <div
+                key={r.fullName}
+                style={{
+                  padding: '14px 16px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(0,0,0,0.06)',
+                  background: 'rgba(0,0,0,0.015)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <a
+                        href={r.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontWeight: 600, fontSize: 13, color: '#007AFF', textDecoration: 'none' }}
+                      >
+                        {r.fullName}
+                      </a>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                        ⭐ {r.stars}
+                      </span>
+                      <span style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                        background: 'rgba(0,0,0,0.05)', color: 'var(--text-tertiary)',
+                      }}>
+                        {r.language}
+                      </span>
+                    </div>
+                    {r.description && r.description !== '(无描述)' && (
+                      <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '4px 0 8px', lineHeight: 1.5 }}>
+                        {r.description.slice(0, 180)}
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+                      {r.skills.slice(0, 5).map(sk => {
+                        const bars = Math.round(sk.matchScore / 10);
+                        const barStr = '█'.repeat(bars) + '░'.repeat(10 - bars);
+                        return (
+                          <div key={sk.name} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontWeight: 500, minWidth: 140 }}>{sk.name}</span>
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: 10, minWidth: 56 }}>
+                              ({sk.toolType})
+                            </span>
+                            <span style={{
+                              fontSize: 9, fontFamily: 'monospace', color: '#007AFF',
+                              letterSpacing: '-0.04em',
+                            }}>
+                              {barStr}
+                            </span>
+                            <span style={{ color: '#007AFF', fontWeight: 500, fontSize: 10 }}>
+                              {sk.matchScore}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {r.skills.length > 5 && (
+                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                          ... 还有 {r.skills.length - 5} 个技能
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleImportSearchResult(r)}
+                    disabled={importingRepo === r.fullName}
+                    className="btn btn-primary"
+                    style={{
+                      fontSize: 11, padding: '5px 12px', flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    {importingRepo === r.fullName ? '导入中...' : '一键导入'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

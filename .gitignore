@@ -23,6 +23,10 @@ temp/
 backup/
 *.tmp
 
+# Version archives (nested git repos)
+1.0版本/
+2.0版本/
+
 # System files
 .DS_Store
 Thumbs.db

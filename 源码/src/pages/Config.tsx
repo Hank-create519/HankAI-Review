@@ -34,7 +34,7 @@ function getRoleSkillOptions(roleKey: string): SkillOption[] {
   ];
 
   if (roleKey === 'extractor' || roleKey === 'extractor2') {
-    return ALL_SKILLS.filter(s => s.key === 'web_search');
+    return ALL_SKILLS.filter(s => s.key === 'web_search' || s.key === 'web_fetch');
   }
   if (
     roleKey === 'debate_ai1' || roleKey === 'debate_ai2' || roleKey === 'debate_ai3' ||

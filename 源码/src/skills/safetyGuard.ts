@@ -12,10 +12,10 @@ import { getToolByName } from './toolRegistry';
  * - round_judge: 无
  */
 const ROLE_TOOL_WHITELIST: Record<string, string[]> = {
-  extractor: ['web_search'],
-  extractor2: ['web_search'],
-  integrator: ['web_search'],
-  final_integrator: ['web_search'],
+  extractor: ['web_search', 'web_fetch'],
+  extractor2: ['web_search', 'web_fetch'],
+  integrator: ['web_search', 'web_fetch'],
+  final_integrator: ['web_search', 'web_fetch'],
   debate_ai1: ['web_search', 'web_fetch'],
   debate_ai2: ['web_search', 'web_fetch'],
   debate_ai3: ['web_search', 'web_fetch'],
